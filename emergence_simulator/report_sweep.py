@@ -22,6 +22,8 @@ def generate_sweep_report(results: Dict[str, Any], report_path: str):
     lines.append(f"- R0 grid: {config['nR']} points from {config['R0_range'][0]:.1e} to {config['R0_range'][1]:.1e} m")
     lines.append(f"- dE grid: {config['nE']} points from {config['dE_range'][0]:.1e} to {config['dE_range'][1]:.1e} J")
     lines.append(f"- tau grid: {config['nTau']} points from {config['tau_range'][0]:.1e} to {config['tau_range'][1]:.1e} s")
+    eta_vals = config.get('eta_vals', [0.0])
+    lines.append(f"- eta values: {eta_vals}")
     lines.append(f"- Fast mode: {config['fast']}")
     lines.append(f"- Random seed: {config['seed']}")
     lines.append("")
@@ -84,6 +86,20 @@ def generate_sweep_report(results: Dict[str, Any], report_path: str):
         frac = count / total if total > 0 else 0
         lines.append(f"| {cls} | {count} | {frac:.2%} |")
     lines.append("")
+
+    # Persistence counts per eta
+    eta_summary = metadata.get("eta_summary", {})
+    if eta_summary:
+        lines.append("### Persistence Counts by Eta (Background Feed)")
+        lines.append("")
+        lines.append("Eta represents the background feed coupling constant. Higher eta sustains activity longer.")
+        lines.append("")
+        lines.append("| eta | Persistent | LongTailTerminal | Terminal | Total |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for eta_str, counts in sorted(eta_summary.items(), key=lambda x: float(x[0])):
+            eta_label = f"{float(eta_str):.0e}" if float(eta_str) > 0 else "0"
+            lines.append(f"| {eta_label} | {counts['Persistent']} | {counts['LongTailTerminal']} | {counts['Terminal']} | {counts['total']} |")
+        lines.append("")
 
     # Cross-tabulation: persistence vs rarity regime
     lines.append("## Persistence by Rarity Regime")

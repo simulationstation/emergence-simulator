@@ -7,6 +7,43 @@ def energy_decay(E0: float, ts: np.ndarray, leak_rate: float) -> np.ndarray:
     return E0 * np.exp(-leak_rate * ts)
 
 
+def energy_dynamics(
+    E0: float,
+    ts: np.ndarray,
+    leak_rate: float,
+    eta: float = 0.0,
+    E_bg: float = 0.0,
+) -> np.ndarray:
+    """
+    Energy dynamics with background feed term.
+
+    ODE: dE/dt = -leak_rate * E + eta * E_bg
+
+    Analytical solution:
+    If leak_rate > 0:
+        E(t) = E0 * exp(-λt) + (eta * E_bg / λ) * (1 - exp(-λt))
+    If leak_rate == 0:
+        E(t) = E0 + eta * E_bg * t
+
+    Parameters:
+    - E0: Initial energy (J)
+    - ts: Time array (s)
+    - leak_rate: Energy dissipation rate λ (s^-1)
+    - eta: Background feed coupling constant (dimensionless)
+    - E_bg: Background energy scale (J)
+
+    Returns:
+    - E(t): Energy array over time
+    """
+    if leak_rate > 0:
+        exp_term = np.exp(-leak_rate * ts)
+        steady_state = (eta * E_bg) / leak_rate
+        return E0 * exp_term + steady_state * (1 - exp_term)
+    else:
+        # No decay: linear growth from background feed
+        return E0 + eta * E_bg * ts
+
+
 def radius_growth(R0: float, ts: np.ndarray, Rmax: float, tgrow: float) -> np.ndarray:
     """Asymptotic radius growth: R(t) = R0 + (Rmax - R0) * (1 - exp(-t/tgrow))."""
     return R0 + (Rmax - R0) * (1 - np.exp(-ts / tgrow))
@@ -32,9 +69,22 @@ def simulate_bubble_dynamics(
     tgrow: float,
     t_end: float,
     n_points: int = 500,
+    eta: float = 0.0,
+    E_bg: float = 0.0,
 ) -> dict:
     """
     Simulate bubble expansion and evaporation dynamics.
+
+    Parameters:
+    - E0: Initial energy (J)
+    - R0: Initial radius (m)
+    - Rmax: Maximum radius (m)
+    - leak_rate: Energy dissipation rate (s^-1)
+    - tgrow: Radius growth timescale (s)
+    - t_end: Simulation end time (s)
+    - n_points: Number of time points
+    - eta: Background feed coupling (dimensionless)
+    - E_bg: Background energy scale (J)
 
     Returns dict with:
     - ts: time array
@@ -44,7 +94,7 @@ def simulate_bubble_dynamics(
     - ops_per_s: activity in ops/s
     """
     ts = np.linspace(0, t_end, n_points)
-    E_t = energy_decay(E0, ts, leak_rate)
+    E_t = energy_dynamics(E0, ts, leak_rate, eta, E_bg)
     R_t = radius_growth(R0, ts, Rmax, tgrow)
     f_t = normalized_activity(E_t, E0)
     ops_s = activity_ops_per_s(E_t)
@@ -62,5 +112,7 @@ def simulate_bubble_dynamics(
             "leak_rate": leak_rate,
             "tgrow": tgrow,
             "t_end": t_end,
+            "eta": eta,
+            "E_bg": E_bg,
         },
     }

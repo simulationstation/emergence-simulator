@@ -20,26 +20,31 @@ def generate_sweep_plots(results: Dict[str, Any], outdir: str):
     metadata = results["metadata"]
 
     _plot_persistence_heatmap(data, metadata, outdir)
-    _plot_ops_vs_rarity_by_persistence(data, outdir)
+    _plot_ops_vs_rarity_by_persistence(data, metadata, outdir)
     _plot_F_inst_a_heatmap(data, metadata, outdir)
-    _plot_pareto_frontier(data, outdir)
+    _plot_pareto_frontier(data, metadata, outdir)
+    _plot_fraction_terminal_vs_eta(metadata, outdir)
 
 
 def _plot_persistence_heatmap(data: List[Dict], metadata: Dict, outdir: str):
-    """Heatmap showing persistence class across (R0, dE) for fixed tau slice."""
+    """Heatmap showing persistence class across (R0, dE) for fixed tau slice and max eta."""
     grids = metadata["grids"]
     R0_vals = grids["R0_vals"]
     dE_vals = grids["dE_vals"]
     tau_vals = grids["tau_vals"]
+    eta_vals = grids.get("eta_vals", [0.0])
 
-    # Use middle tau value
+    # Use middle tau value and max eta (most likely to show variation)
     fixed_tau = tau_vals[len(tau_vals) // 2]
+    fixed_eta = max(eta_vals)
 
     # Build 2D grid
     grid = np.full((len(dE_vals), len(R0_vals)), np.nan)
 
     for d in data:
         if not np.isclose(d["tau_s"], fixed_tau, rtol=1e-9):
+            continue
+        if d.get("eta", 0.0) != fixed_eta:
             continue
 
         i_R = np.argmin(np.abs(np.array(R0_vals) - d["R0_m"]))
@@ -69,21 +74,26 @@ def _plot_persistence_heatmap(data: List[Dict], metadata: Dict, outdir: str):
 
     ax.set_xlabel("log10(R0_m)")
     ax.set_ylabel("log10(dE_J)")
-    ax.set_title(f"Persistence Classification (tau={fixed_tau:.1e}s)")
+    ax.set_title(f"Persistence Classification (tau={fixed_tau:.1e}s, eta={fixed_eta:.1e})")
 
     plt.tight_layout()
     plt.savefig(os.path.join(outdir, "persistence_heatmap.png"), dpi=100)
     plt.close()
 
 
-def _plot_ops_vs_rarity_by_persistence(data: List[Dict], outdir: str):
+def _plot_ops_vs_rarity_by_persistence(data: List[Dict], metadata: Dict, outdir: str):
     """Scatter plot of log10_ops vs log10P colored by persistence class."""
     markers = {"Persistent": "o", "LongTailTerminal": "s", "Terminal": "^"}
+
+    # Use max eta for most variation
+    eta_vals = metadata["grids"].get("eta_vals", [0.0])
+    fixed_eta = max(eta_vals)
+    filtered_data = [d for d in data if d.get("eta", 0.0) == fixed_eta]
 
     fig, ax = plt.subplots(figsize=(8, 6))
 
     for cls in PERSISTENCE_CLASSES:
-        subset = [d for d in data if d["persistence_class"] == cls]
+        subset = [d for d in filtered_data if d["persistence_class"] == cls]
         if not subset:
             continue
 
@@ -95,7 +105,7 @@ def _plot_ops_vs_rarity_by_persistence(data: List[Dict], outdir: str):
 
     ax.set_xlabel("log10(ops)")
     ax.set_ylabel("log10(P) [instanton_a]")
-    ax.set_title("Operations vs Rarity by Persistence Class")
+    ax.set_title(f"Operations vs Rarity by Persistence Class (eta={fixed_eta:.1e})")
     ax.legend()
     ax.grid(True, alpha=0.3)
 
@@ -110,15 +120,19 @@ def _plot_F_inst_a_heatmap(data: List[Dict], metadata: Dict, outdir: str):
     R0_vals = grids["R0_vals"]
     dE_vals = grids["dE_vals"]
     tau_vals = grids["tau_vals"]
+    eta_vals = grids.get("eta_vals", [0.0])
 
-    # Use middle tau value
+    # Use middle tau value (F is independent of eta)
     fixed_tau = tau_vals[len(tau_vals) // 2]
+    fixed_eta = eta_vals[0]  # F doesn't depend on eta, use first
 
     # Build 2D grid
     grid = np.full((len(dE_vals), len(R0_vals)), np.nan)
 
     for d in data:
         if not np.isclose(d["tau_s"], fixed_tau, rtol=1e-9):
+            continue
+        if d.get("eta", 0.0) != fixed_eta:
             continue
 
         i_R = np.argmin(np.abs(np.array(R0_vals) - d["R0_m"]))
@@ -151,10 +165,15 @@ def _plot_F_inst_a_heatmap(data: List[Dict], metadata: Dict, outdir: str):
     plt.close()
 
 
-def _plot_pareto_frontier(data: List[Dict], outdir: str):
+def _plot_pareto_frontier(data: List[Dict], metadata: Dict, outdir: str):
     """Plot points maximizing ops at fixed rarity bins (Pareto frontier)."""
+    # Use max eta
+    eta_vals = metadata["grids"].get("eta_vals", [0.0])
+    fixed_eta = max(eta_vals)
+    filtered_data = [d for d in data if d.get("eta", 0.0) == fixed_eta]
+
     # Filter valid points
-    valid = [d for d in data if math.isfinite(d["log10_ops"]) and math.isfinite(d["log10P_inst_a"])]
+    valid = [d for d in filtered_data if math.isfinite(d["log10_ops"]) and math.isfinite(d["log10P_inst_a"])]
 
     if len(valid) < 2:
         return
@@ -196,10 +215,61 @@ def _plot_pareto_frontier(data: List[Dict], outdir: str):
 
     ax.set_xlabel("log10(P) [instanton_a]")
     ax.set_ylabel("log10(ops)")
-    ax.set_title("Pareto Frontier: Max Ops at Fixed Rarity")
+    ax.set_title(f"Pareto Frontier: Max Ops at Fixed Rarity (eta={fixed_eta:.1e})")
     ax.legend()
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
     plt.savefig(os.path.join(outdir, "pareto_frontier.png"), dpi=100)
+    plt.close()
+
+
+def _plot_fraction_terminal_vs_eta(metadata: Dict, outdir: str):
+    """Plot fraction of Terminal classifications vs eta."""
+    eta_summary = metadata.get("eta_summary", {})
+
+    if not eta_summary:
+        return
+
+    eta_vals = []
+    frac_terminal = []
+    frac_persistent = []
+    frac_longtail = []
+
+    for eta_str, counts in sorted(eta_summary.items(), key=lambda x: float(x[0])):
+        eta = float(eta_str)
+        total = counts["total"]
+        if total == 0:
+            continue
+
+        eta_vals.append(eta)
+        frac_terminal.append(counts["Terminal"] / total)
+        frac_persistent.append(counts["Persistent"] / total)
+        frac_longtail.append(counts["LongTailTerminal"] / total)
+
+    if not eta_vals:
+        return
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    # Use log scale for x-axis if eta > 0 exists
+    x_vals = np.arange(len(eta_vals))
+    x_labels = [f"{e:.0e}" if e > 0 else "0" for e in eta_vals]
+
+    width = 0.25
+    ax.bar(x_vals - width, frac_persistent, width, label="Persistent")
+    ax.bar(x_vals, frac_longtail, width, label="LongTailTerminal")
+    ax.bar(x_vals + width, frac_terminal, width, label="Terminal")
+
+    ax.set_xlabel("eta (background feed coupling)")
+    ax.set_ylabel("Fraction of grid points")
+    ax.set_title("Persistence Classification vs Background Feed (eta)")
+    ax.set_xticks(x_vals)
+    ax.set_xticklabels(x_labels)
+    ax.legend()
+    ax.set_ylim(0, 1.05)
+    ax.grid(True, alpha=0.3, axis="y")
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(outdir, "fraction_terminal_vs_eta.png"), dpi=100)
     plt.close()

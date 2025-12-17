@@ -39,6 +39,18 @@ def parse_args(args=None):
         action="store_true",
         help="Use reduced grid size for faster execution",
     )
+    parser.add_argument(
+        "--eta",
+        type=float,
+        default=0.0,
+        help="Background feed coupling constant (default 0.0)",
+    )
+    parser.add_argument(
+        "--E_bg_J",
+        type=float,
+        default=0.0,
+        help="Background energy scale in Joules (default 0.0)",
+    )
     return parser.parse_args(args)
 
 
@@ -66,7 +78,13 @@ def run_bubble_demo(outdir: str, fast: bool = False):
     return results
 
 
-def run_bubble_dynamics(outdir: str, fast: bool = False, sweep_results: dict = None):
+def run_bubble_dynamics(
+    outdir: str,
+    fast: bool = False,
+    sweep_results: dict = None,
+    eta: float = 0.0,
+    E_bg_J: float = 0.0,
+):
     """Run bubble dynamics simulation for a representative bubble."""
     from .dynamics import simulate_bubble_dynamics
     from .metrics import compute_dynamics_metrics
@@ -103,6 +121,9 @@ def run_bubble_dynamics(outdir: str, fast: bool = False, sweep_results: dict = N
     t_end = tau * 5
     n_points = 100 if fast else 500
 
+    # Use E0 as E_bg if not specified
+    E_bg = E_bg_J if E_bg_J > 0 else E0
+
     # Run simulation
     sim_result = simulate_bubble_dynamics(
         E0=E0,
@@ -112,6 +133,8 @@ def run_bubble_dynamics(outdir: str, fast: bool = False, sweep_results: dict = N
         tgrow=tgrow,
         t_end=t_end,
         n_points=n_points,
+        eta=eta,
+        E_bg=E_bg,
     )
 
     # Compute metrics
@@ -194,7 +217,13 @@ def main(args=None):
         sweep_results = run_bubble_demo(parsed.outdir, parsed.fast)
 
     if parsed.bubble_dynamics:
-        run_bubble_dynamics(parsed.outdir, parsed.fast, sweep_results)
+        run_bubble_dynamics(
+            parsed.outdir,
+            parsed.fast,
+            sweep_results,
+            eta=parsed.eta,
+            E_bg_J=parsed.E_bg_J,
+        )
 
     if parsed.sweep_all:
         run_sweep_all_cmd(parsed.outdir, parsed.fast)
