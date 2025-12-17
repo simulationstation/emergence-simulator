@@ -22,8 +22,21 @@ def generate_sweep_report(results: Dict[str, Any], report_path: str):
     lines.append(f"- R0 grid: {config['nR']} points from {config['R0_range'][0]:.1e} to {config['R0_range'][1]:.1e} m")
     lines.append(f"- dE grid: {config['nE']} points from {config['dE_range'][0]:.1e} to {config['dE_range'][1]:.1e} J")
     lines.append(f"- tau grid: {config['nTau']} points from {config['tau_range'][0]:.1e} to {config['tau_range'][1]:.1e} s")
-    eta_vals = config.get('eta_vals', [0.0])
-    lines.append(f"- eta values: {eta_vals}")
+
+    feed_mode = config.get('feed_mode', 'constant')
+    lines.append(f"- Feed mode: {feed_mode}")
+
+    if feed_mode == "decay":
+        q_vals = config.get('q_vals', [1.0])
+        t0_fracs = config.get('t0_fracs', [0.1])
+        eta0_vals = config.get('eta0_vals', [1e-4])
+        lines.append(f"- q values (power-law exponent): {q_vals}")
+        lines.append(f"- t0_fracs (t0/tau): {t0_fracs}")
+        lines.append(f"- eta0 values (initial coupling): {eta0_vals}")
+    else:
+        eta_vals = config.get('eta_vals', [0.0])
+        lines.append(f"- eta values: {eta_vals}")
+
     lines.append(f"- Fast mode: {config['fast']}")
     lines.append(f"- Random seed: {config['seed']}")
     lines.append("")
@@ -87,19 +100,48 @@ def generate_sweep_report(results: Dict[str, Any], report_path: str):
         lines.append(f"| {cls} | {count} | {frac:.2%} |")
     lines.append("")
 
-    # Persistence counts per eta
-    eta_summary = metadata.get("eta_summary", {})
-    if eta_summary:
-        lines.append("### Persistence Counts by Eta (Background Feed)")
-        lines.append("")
-        lines.append("Eta represents the background feed coupling constant. Higher eta sustains activity longer.")
-        lines.append("")
-        lines.append("| eta | Persistent | LongTailTerminal | Terminal | Total |")
-        lines.append("| --- | --- | --- | --- | --- |")
-        for eta_str, counts in sorted(eta_summary.items(), key=lambda x: float(x[0])):
-            eta_label = f"{float(eta_str):.0e}" if float(eta_str) > 0 else "0"
-            lines.append(f"| {eta_label} | {counts['Persistent']} | {counts['LongTailTerminal']} | {counts['Terminal']} | {counts['total']} |")
-        lines.append("")
+    # Persistence counts per feed parameter (eta for constant, q/eta0 for decay)
+    feed_mode = config.get('feed_mode', 'constant')
+
+    if feed_mode == "decay":
+        # Decay mode: show q_summary and eta0_summary
+        q_summary = metadata.get("q_summary", {})
+        if q_summary:
+            lines.append("### Persistence Counts by q (Power-Law Exponent)")
+            lines.append("")
+            lines.append("q controls how quickly the background feed decays: g(t) = 1/(1 + t/t0)^q")
+            lines.append("")
+            lines.append("| q | Persistent | LongTailTerminal | Terminal | Total |")
+            lines.append("| --- | --- | --- | --- | --- |")
+            for q_str, counts in sorted(q_summary.items(), key=lambda x: float(x[0])):
+                lines.append(f"| {float(q_str):.1f} | {counts['Persistent']} | {counts['LongTailTerminal']} | {counts['Terminal']} | {counts['total']} |")
+            lines.append("")
+
+        eta0_summary = metadata.get("eta0_summary", {})
+        if eta0_summary:
+            lines.append("### Persistence Counts by eta0 (Initial Feed Coupling)")
+            lines.append("")
+            lines.append("eta0 sets the initial amplitude of the decaying background feed.")
+            lines.append("")
+            lines.append("| eta0 | Persistent | LongTailTerminal | Terminal | Total |")
+            lines.append("| --- | --- | --- | --- | --- |")
+            for eta0_str, counts in sorted(eta0_summary.items(), key=lambda x: float(x[0])):
+                lines.append(f"| {float(eta0_str):.0e} | {counts['Persistent']} | {counts['LongTailTerminal']} | {counts['Terminal']} | {counts['total']} |")
+            lines.append("")
+    else:
+        # Constant mode: show eta_summary
+        eta_summary = metadata.get("eta_summary", {})
+        if eta_summary:
+            lines.append("### Persistence Counts by Eta (Background Feed)")
+            lines.append("")
+            lines.append("Eta represents the background feed coupling constant. Higher eta sustains activity longer.")
+            lines.append("")
+            lines.append("| eta | Persistent | LongTailTerminal | Terminal | Total |")
+            lines.append("| --- | --- | --- | --- | --- |")
+            for eta_str, counts in sorted(eta_summary.items(), key=lambda x: float(x[0])):
+                eta_label = f"{float(eta_str):.0e}" if float(eta_str) > 0 else "0"
+                lines.append(f"| {eta_label} | {counts['Persistent']} | {counts['LongTailTerminal']} | {counts['Terminal']} | {counts['total']} |")
+            lines.append("")
 
     # Cross-tabulation: persistence vs rarity regime
     lines.append("## Persistence by Rarity Regime")

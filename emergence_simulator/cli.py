@@ -43,13 +43,38 @@ def parse_args(args=None):
         "--eta",
         type=float,
         default=0.0,
-        help="Background feed coupling constant (default 0.0)",
+        help="Background feed coupling constant for constant mode (default 0.0)",
     )
     parser.add_argument(
         "--E_bg_J",
         type=float,
         default=0.0,
         help="Background energy scale in Joules (default 0.0)",
+    )
+    parser.add_argument(
+        "--feed_mode",
+        type=str,
+        choices=["constant", "decay"],
+        default="constant",
+        help="Feed mode: 'constant' (plateau) or 'decay' (power-law) (default: constant)",
+    )
+    parser.add_argument(
+        "--eta0",
+        type=float,
+        default=0.0,
+        help="Initial feed coupling for decay mode (default 0.0)",
+    )
+    parser.add_argument(
+        "--t0",
+        type=float,
+        default=1.0,
+        help="Feed decay timescale for decay mode (default 1.0)",
+    )
+    parser.add_argument(
+        "--q",
+        type=float,
+        default=1.0,
+        help="Feed decay power-law exponent for decay mode (default 1.0)",
     )
     return parser.parse_args(args)
 
@@ -84,6 +109,10 @@ def run_bubble_dynamics(
     sweep_results: dict = None,
     eta: float = 0.0,
     E_bg_J: float = 0.0,
+    feed_mode: str = "constant",
+    eta0: float = 0.0,
+    t0: float = 1.0,
+    q: float = 1.0,
 ):
     """Run bubble dynamics simulation for a representative bubble."""
     from .dynamics import simulate_bubble_dynamics
@@ -124,6 +153,9 @@ def run_bubble_dynamics(
     # Use E0 as E_bg if not specified
     E_bg = E_bg_J if E_bg_J > 0 else E0
 
+    # Set t0 relative to tau if using decay mode with default t0
+    t0_eff = t0 if t0 != 1.0 else 0.1 * tau
+
     # Run simulation
     sim_result = simulate_bubble_dynamics(
         E0=E0,
@@ -135,6 +167,10 @@ def run_bubble_dynamics(
         n_points=n_points,
         eta=eta,
         E_bg=E_bg,
+        feed_mode=feed_mode,
+        eta0=eta0,
+        t0=t0_eff,
+        q=q,
     )
 
     # Compute metrics
@@ -169,7 +205,7 @@ def run_bubble_dynamics(
     return results
 
 
-def run_sweep_all_cmd(outdir: str, fast: bool = False):
+def run_sweep_all_cmd(outdir: str, fast: bool = False, feed_mode: str = "constant"):
     """Run comprehensive sweep with complexity, rarity, and persistence."""
     from .sweep_all import run_sweep_all, SweepAllConfig
     from .plot_sweep import generate_sweep_plots
@@ -178,7 +214,7 @@ def run_sweep_all_cmd(outdir: str, fast: bool = False):
     sweep_dir = os.path.join(outdir, "sweep")
     os.makedirs(sweep_dir, exist_ok=True)
 
-    config = SweepAllConfig(fast=fast)
+    config = SweepAllConfig(fast=fast, feed_mode=feed_mode)
     results = run_sweep_all(config)
 
     # Save JSON results
@@ -223,10 +259,14 @@ def main(args=None):
             sweep_results,
             eta=parsed.eta,
             E_bg_J=parsed.E_bg_J,
+            feed_mode=parsed.feed_mode,
+            eta0=parsed.eta0,
+            t0=parsed.t0,
+            q=parsed.q,
         )
 
     if parsed.sweep_all:
-        run_sweep_all_cmd(parsed.outdir, parsed.fast)
+        run_sweep_all_cmd(parsed.outdir, parsed.fast, parsed.feed_mode)
 
     if parsed.report_master:
         run_report_master_cmd(parsed.outdir)
