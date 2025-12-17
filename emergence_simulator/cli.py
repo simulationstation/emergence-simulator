@@ -19,6 +19,16 @@ def parse_args(args=None):
         help="Run bubble dynamics simulation",
     )
     parser.add_argument(
+        "--sweep-all",
+        action="store_true",
+        help="Run comprehensive sweep with complexity, rarity, and persistence",
+    )
+    parser.add_argument(
+        "--report-master",
+        action="store_true",
+        help="Generate consolidated master report from existing artifacts",
+    )
+    parser.add_argument(
         "--outdir",
         type=str,
         default="outputs_emergence",
@@ -136,6 +146,45 @@ def run_bubble_dynamics(outdir: str, fast: bool = False, sweep_results: dict = N
     return results
 
 
+def run_sweep_all_cmd(outdir: str, fast: bool = False):
+    """Run comprehensive sweep with complexity, rarity, and persistence."""
+    from .sweep_all import run_sweep_all, SweepAllConfig
+    from .plot_sweep import generate_sweep_plots
+    from .report_sweep import generate_sweep_report
+
+    sweep_dir = os.path.join(outdir, "sweep")
+    os.makedirs(sweep_dir, exist_ok=True)
+
+    config = SweepAllConfig(fast=fast)
+    results = run_sweep_all(config)
+
+    # Save JSON results
+    json_path = os.path.join(sweep_dir, "sweep_results.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2)
+
+    # Generate plots
+    generate_sweep_plots(results, sweep_dir)
+
+    # Generate report
+    report_path = os.path.join(sweep_dir, "sweep_report.md")
+    generate_sweep_report(results, report_path)
+
+    print(f"Comprehensive sweep complete. Artifacts written to {sweep_dir}")
+    return results
+
+
+def run_report_master_cmd(outdir: str):
+    """Generate consolidated master report from existing artifacts."""
+    from .report_master import generate_master_report
+
+    report_path = os.path.join(outdir, "MASTER_REPORT.md")
+    generate_master_report(outdir, report_path)
+
+    print(f"Master report generated: {report_path}")
+    return report_path
+
+
 def main(args=None):
     parsed = parse_args(args)
 
@@ -146,9 +195,15 @@ def main(args=None):
 
     if parsed.bubble_dynamics:
         run_bubble_dynamics(parsed.outdir, parsed.fast, sweep_results)
+
+    if parsed.sweep_all:
+        run_sweep_all_cmd(parsed.outdir, parsed.fast)
+
+    if parsed.report_master:
+        run_report_master_cmd(parsed.outdir)
         return 0
 
-    if parsed.bubble_demo:
+    if parsed.bubble_demo or parsed.bubble_dynamics or parsed.sweep_all:
         return 0
 
     # Default behavior: print ok message
